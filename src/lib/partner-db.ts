@@ -3,6 +3,7 @@ import { Database } from "bun:sqlite";
 import path from "node:path";
 import bcrypt from "bcryptjs";
 import { notifyTeamNewPartner, sendWelcomeEmail } from "./email";
+import { lookupInfluencerByCode, createReferral } from "./influencer-db";
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -96,6 +97,7 @@ export const partnerSignup = createServerFn({ method: "POST" })
       email: string;
       password: string;
       tier: TierKey;
+      referralCode?: string;
     };
     if (!d?.businessName || !d?.email || !d?.password || !d?.tier) {
       throw new Error("All fields are required");
@@ -111,6 +113,12 @@ export const partnerSignup = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const db = getDb();
     ensureTables(db);
+
+    // Ensure influencer tables exist (migration for referral_code column)
+    try {
+      db.exec("ALTER TABLE partners ADD COLUMN referral_code TEXT");
+    } catch (_) {}
+
     const hash = await bcrypt.hash(data.password, 10);
 
     // Check if email already exists
@@ -120,9 +128,29 @@ export const partnerSignup = createServerFn({ method: "POST" })
       throw new Error("A partner with this email already exists");
     }
 
+    // Validate referral code if provided
+    const refCode = data.referralCode?.trim() || null;
+    let influencerInfo: { id: number; name: string } | null = null;
+    if (refCode) {
+      influencerInfo = lookupInfluencerByCode(db, refCode);
+      if (!influencerInfo) {
+        // Don't fail — just ignore invalid codes silently
+        console.log(`[partnerSignup] Invalid referral code ignored: ${refCode}`);
+      }
+    }
+
     const result = db.query(
-      "INSERT INTO partners (business_name, email, password_hash, tier, payment_status) VALUES (?, ?, ?, ?, 'pending') RETURNING id, business_name, email, tier, payment_status, created_at"
-    ).get(data.businessName, data.email, hash, data.tier) as any;
+      "INSERT INTO partners (business_name, email, password_hash, tier, payment_status, referral_code) VALUES (?, ?, ?, ?, 'pending', ?) RETURNING id, business_name, email, tier, payment_status, created_at"
+    ).get(data.businessName, data.email, hash, data.tier, refCode) as any;
+
+    // Create referral record if valid influencer code was used
+    if (influencerInfo) {
+      try {
+        createReferral(db, influencerInfo.id, result.id, data.tier);
+      } catch (err) {
+        console.error("[partnerSignup] Failed to create referral:", err);
+      }
+    }
 
     db.close();
 

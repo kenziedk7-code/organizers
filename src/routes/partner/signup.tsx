@@ -1,22 +1,32 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { partnerSignup, STRIPE_PAYMENT_LINKS, TIERS, type TierKey } from "../../lib/partner-db";
 
 export const Route = createFileRoute("/partner/signup")({
   component: PartnerSignup,
+  validateSearch: (search: Record<string, unknown>) => ({
+    ref: typeof search.ref === "string" ? search.ref : undefined,
+  }),
 });
 
 function PartnerSignup() {
+  const { ref } = Route.useSearch();
   const [businessName, setBusinessName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [tier, setTier] = useState<TierKey>("starter");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [referralCode, setReferralCode] = useState<string | undefined>(ref);
   const [confirmData, setConfirmData] = useState<{
     businessName: string;
     tier: TierKey;
   } | null>(null);
+
+  // Keep referralCode in sync with URL param
+  useEffect(() => {
+    if (ref) setReferralCode(ref);
+  }, [ref]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,7 +35,7 @@ function PartnerSignup() {
 
     try {
       const result = await partnerSignup({
-        data: { businessName, email, password, tier },
+        data: { businessName, email, password, tier, referralCode },
       });
       setConfirmData({ businessName: result.businessName, tier: result.tier });
     } catch (err) {
@@ -138,6 +148,18 @@ function PartnerSignup() {
           List your organizational products and reach customers at the exact
           moment they need them.
         </p>
+
+        {/* Referral indicator */}
+        {referralCode && (
+          <div className="mb-6 rounded-lg border border-purple-200 bg-purple-50 p-4 text-sm text-purple-700 flex items-center gap-2">
+            <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+            </svg>
+            <span>
+              You were referred by an influencer! Your referral will be tracked.
+            </span>
+          </div>
+        )}
 
         {error && (
           <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">

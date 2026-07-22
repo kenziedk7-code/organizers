@@ -598,8 +598,18 @@ function Home() {
       </div>
 
       {/* ── Footer ── */}
-      <footer className="border-t border-gray-200 bg-white py-6 text-center text-sm text-gray-400">
-        ScanSort &mdash; AI-powered organization recommendations
+      <footer className="border-t border-gray-200 bg-white py-6">
+        <div className="mx-auto flex max-w-4xl items-center justify-center gap-6 px-6 text-sm text-gray-400">
+          <span>ScanSort &mdash; AI-powered organization recommendations</span>
+          <span className="text-gray-300">|</span>
+          <a href="/partner" className="hover:text-gray-600 transition-colors">
+            Partner Portal
+          </a>
+          <span className="text-gray-300">|</span>
+          <a href="/influencer" className="hover:text-gray-600 transition-colors">
+            Influencer Program
+          </a>
+        </div>
       </footer>
     </main>
   );
