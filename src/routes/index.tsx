@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useRef, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 import { analyzeSpace, type SpaceAnalysis } from "../lib/analyze";
 import { trackScanInitiated, trackOutboundClick } from "../lib/pixels";
+import { saveScan, getSessionConsumer, consumerLogout } from "../lib/consumer-db";
 
 export const Route = createFileRoute("/")({
   component: Home,
@@ -16,6 +17,45 @@ function Home() {
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Consumer auth state
+  const [consumerEmail, setConsumerEmail] = useState<string | null>(null);
+  const [consumerToken, setConsumerToken] = useState<string | null>(null);
+  const [scanSaved, setScanSaved] = useState(false);
+
+  // Check for existing session on mount
+  useEffect(() => {
+    const token = localStorage.getItem("consumer_token");
+    if (!token) return;
+
+    let cancelled = false;
+    getSessionConsumer({ data: { token } })
+      .then((c) => {
+        if (!cancelled) {
+          setConsumerToken(token);
+          setConsumerEmail(c.email);
+          localStorage.setItem("consumer", JSON.stringify(c));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          localStorage.removeItem("consumer_token");
+          localStorage.removeItem("consumer");
+        }
+      });
+
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleLogout = useCallback(async () => {
+    if (consumerToken) {
+      try { await consumerLogout({ data: { token: consumerToken } }); } catch {}
+    }
+    localStorage.removeItem("consumer_token");
+    localStorage.removeItem("consumer");
+    setConsumerToken(null);
+    setConsumerEmail(null);
+  }, [consumerToken]);
+
   const handleFile = useCallback((file: File) => {
     if (!file.type.startsWith("image/")) {
       setError("Please upload an image file (JPEG, PNG, WebP, etc.)");
@@ -23,6 +63,7 @@ function Home() {
     }
     setError(null);
     setResult(null);
+    setScanSaved(false);
     setMimeType(file.type);
 
     const reader = new FileReader();
@@ -55,6 +96,7 @@ function Home() {
     setAnalyzing(true);
     setError(null);
     setResult(null);
+    setScanSaved(false);
 
     try {
       const analysis = await analyzeSpace({
@@ -64,6 +106,23 @@ function Home() {
         },
       });
       setResult(analysis);
+
+      // Auto-save scan for logged-in users
+      if (consumerToken) {
+        try {
+          await saveScan({
+            data: {
+              token: consumerToken,
+              spaceType: analysis.spaceType,
+              imageData: image,
+              analysis,
+            },
+          });
+          setScanSaved(true);
+        } catch (err) {
+          console.error("Failed to save scan:", err);
+        }
+      }
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Something went wrong. Please try again.",
@@ -71,12 +130,13 @@ function Home() {
     } finally {
       setAnalyzing(false);
     }
-  }, [image, mimeType]);
+  }, [image, mimeType, consumerToken]);
 
   const handleReset = useCallback(() => {
     setImage(null);
     setResult(null);
     setError(null);
+    setScanSaved(false);
   }, []);
 
   return (
@@ -91,10 +151,32 @@ function Home() {
             <span className="text-lg font-semibold text-gray-900">ScanSort</span>
           </div>
           <div className="flex items-center gap-4">
-            <a href="/partner" className="text-sm font-medium text-indigo-600 hover:text-indigo-700">
-              Partner Portal
-            </a>
-            <span className="text-sm text-gray-500">Organize smarter</span>
+            {consumerEmail ? (
+              <>
+                <a href="/dashboard" className="text-sm font-medium text-indigo-600 hover:text-indigo-700">
+                  Dashboard
+                </a>
+                <span className="text-sm text-gray-500 hidden sm:inline">{consumerEmail}</span>
+                <button
+                  onClick={handleLogout}
+                  className="text-sm text-gray-500 hover:text-gray-700 underline cursor-pointer"
+                >
+                  Log out
+                </button>
+              </>
+            ) : (
+              <>
+                <a href="/login" className="text-sm font-medium text-gray-600 hover:text-gray-900">
+                  Log In
+                </a>
+                <a href="/signup" className="text-sm font-medium text-indigo-600 hover:text-indigo-700">
+                  Sign Up
+                </a>
+                <a href="/partner" className="text-sm text-gray-500 hover:text-gray-700">
+                  Partner Portal
+                </a>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -264,6 +346,16 @@ function Home() {
                   alt="Uploaded space"
                   className="mx-auto max-h-64 w-full object-contain"
                 />
+              </div>
+            )}
+
+            {/* Saved confirmation for logged-in users */}
+            {scanSaved && (
+              <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-700 flex items-center gap-2">
+                <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                Scan saved to your dashboard!
               </div>
             )}
 
@@ -462,6 +554,32 @@ function Home() {
                       </a>
                     </div>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {/* Signup prompt — only for anonymous users */}
+            {!consumerEmail && (
+              <div className="rounded-2xl border-2 border-indigo-200 bg-gradient-to-r from-indigo-50 to-purple-50 p-6 text-center">
+                <h3 className="text-lg font-bold text-gray-900 mb-1">
+                  Want to save your results?
+                </h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  Create a free account to save your scans and get more personalized recommendations.
+                </p>
+                <div className="flex items-center justify-center gap-3 flex-wrap">
+                  <a
+                    href="/signup"
+                    className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-indigo-700"
+                  >
+                    Create Free Account
+                  </a>
+                  <a
+                    href="/login"
+                    className="text-sm font-medium text-indigo-600 underline hover:text-indigo-800"
+                  >
+                    Log in instead
+                  </a>
                 </div>
               </div>
             )}
