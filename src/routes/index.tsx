@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useRef, useState, type DragEvent } from "react";
 import { analyzeSpace, type SpaceAnalysis } from "../lib/analyze";
+import { trackScanInitiated, trackOutboundClick } from "../lib/pixels";
 
 export const Route = createFileRoute("/")({
   component: Home,
@@ -50,6 +51,7 @@ function Home() {
 
   const handleAnalyze = useCallback(async () => {
     if (!image) return;
+    trackScanInitiated();
     setAnalyzing(true);
     setError(null);
     setResult(null);
@@ -356,6 +358,7 @@ function Home() {
                         href={linkUrl}
                         target="_blank"
                         rel="noopener noreferrer"
+                        onClick={() => trackOutboundClick(displayTitle, linkUrl)}
                         className="mt-auto inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-indigo-700"
                       >
                         <svg
@@ -439,6 +442,7 @@ function Home() {
                         href={pick.purchaseUrl}
                         target="_blank"
                         rel="noopener noreferrer"
+                        onClick={() => trackOutboundClick(pick.name, pick.purchaseUrl)}
                         className="mt-auto inline-flex items-center justify-center gap-2 rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-amber-700"
                       >
                         <svg

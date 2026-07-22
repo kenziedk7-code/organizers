@@ -6,6 +6,7 @@ import {
 } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
+import { PixelScripts } from "~/lib/pixels";
 import appCss from "~/styles/app.css?url";
 
 export const Route = createRootRoute({
@@ -34,6 +35,7 @@ function RootDocument({ children }: { children: ReactNode }) {
     <html lang="en">
       <head>
         <HeadContent />
+        <PixelScripts />
       </head>
       <body>
         {children}
